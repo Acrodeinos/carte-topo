@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Carte Topo</title>
+<!-- Web app installable : Safari › Partager › « Sur l'écran d'accueil » -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#181B14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Carte Topo">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{--bg:#181B14;--panel:rgba(24,27,20,.94);--card:#20241A;--ctl:#2A2F22;--stroke:#3A3F2E;--text:#ECE8D8;--sec:#C9C7B2;--muted:#A9A893;--dim:#6B6E5C;--accent:#E4A72B;--deep:#3A3018}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0E100C;font-family:Barlow,sans-serif;color:var(--text);overscroll-behavior:none}
+body{display:flex;align-items:center;justify-content:center}
+button{font-family:inherit;color:inherit}
+.phone{position:relative;width:390px;height:844px;max-height:100vh;border-radius:44px;overflow:hidden;background:#F1EAD6;box-shadow:0 0 0 10px #1c1c1c,0 20px 60px rgba(0,0,0,.6)}
+@media (max-width:430px){.phone{width:100vw;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none}}
+#map{position:absolute;inset:0;background:#EDE5CF;touch-action:none}
+.lidar{mix-blend-mode:multiply}
+.ui{position:absolute;z-index:1000}
+.panel{background:var(--panel);border:1px solid var(--stroke)}
+.lab{font:11px 'IBM Plex Mono',monospace;letter-spacing:1px;color:var(--muted)}
+.mono{font-family:'IBM Plex Mono',monospace}
+.cond{font-family:'Barlow Condensed',sans-serif;font-weight:700}
+[hidden]{display:none!important}
+
+/* Carte */
+.top{left:12px;right:12px;top:54px;display:flex;flex-direction:column;gap:8px}
+.bar{display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;border-radius:14px}
+.bar input{flex:1;min-width:0;height:40px;border:0;outline:0;background:transparent;color:var(--text);font:16px Barlow,sans-serif}
+.bar input::placeholder{color:var(--muted)}
+.chipbtn{height:36px;padding:0 10px;border:0;border-radius:10px;background:var(--ctl);color:var(--accent);font:700 13px 'Barlow Condensed';letter-spacing:1px;cursor:pointer}
+.iconbtn{width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:12px;cursor:pointer;color:var(--text)}
+.coords{display:flex;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:12px;font:12px 'IBM Plex Mono';cursor:pointer}
+.coords .k{color:var(--muted)}.coords .alt{color:var(--accent)}
+.results{border-radius:14px;overflow:hidden;touch-action:pan-y}
+.results button{display:block;width:100%;text-align:left;padding:10px 14px;background:none;border:0;border-bottom:1px solid var(--ctl);font:500 15px Barlow;cursor:pointer}
+.results small{display:block;font:10.5px 'IBM Plex Mono';color:var(--muted)}
+.tools{right:12px;top:192px;display:flex;flex-direction:column;gap:8px}
+.cross{left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;pointer-events:none}
+.scale{left:12px;bottom:112px;padding:8px 10px;border-radius:10px;font:10px 'IBM Plex Mono';color:var(--sec)}
+.scale .b{display:flex;height:6px;margin-bottom:4px}.scale i{display:block;height:6px}
+.scale .lbl{font-size:11px;color:var(--accent);margin-top:4px}
+.loc{right:12px;bottom:116px;width:48px;height:48px;border-radius:24px;background:var(--accent);border:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.attr{right:6px;bottom:96px;padding:2px 6px;background:rgba(255,255,255,.85);border-radius:4px;font:8.5px 'IBM Plex Mono';color:#333}
+.place{left:50%;bottom:184px;transform:translateX(-50%);height:44px;padding:0 16px;border:0;border-radius:22px;background:var(--accent);color:var(--bg);font:700 15px 'Barlow Condensed';letter-spacing:.8px;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+
+/* Marqueurs sur la carte */
+.mk{display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:auto}
+.mk .sq{width:22px;height:22px;flex:none;border:2px solid var(--accent);border-radius:4px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--accent);font:700 11px 'Barlow Condensed'}
+.mk .tx{padding:2px 6px;border-radius:4px;background:rgba(24,27,20,.9);color:var(--text);font:600 12px 'Barlow Condensed';letter-spacing:.4px;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+
+/* Barre du bas */
+/* Mode nuit : tout passe en rouge sur noir ; la carte est d'abord mise en négatif */
+.phone.night{filter:url(#nightRed);background:#000}
+.phone.night #map{filter:invert(1) contrast(1.1);background:#000}
+/* iPhone plein écran : respecte l'encoche / Dynamic Island et la barre d'accueil */
+@media (max-width:430px){
+  .top,.xtitle{top:max(54px, calc(env(safe-area-inset-top) + 6px))}
+  .screen{padding-top:max(54px, calc(env(safe-area-inset-top) + 6px))}
+  nav{padding-bottom:max(30px, env(safe-area-inset-bottom))}
+}
+#btnPin.on{color:var(--accent);border-color:var(--accent)}
+nav{left:0;right:0;bottom:0;height:92px;padding:8px 4px 30px;display:grid;grid-template-columns:repeat(5,1fr);gap:2px;background:var(--bg);border-top:1px solid var(--stroke);z-index:1300}
+nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:0;color:var(--muted);font:600 11.5px 'Barlow Condensed';letter-spacing:.6px;cursor:pointer}
+nav button.on{color:var(--accent)}
+
+/* Écrans plein cadre (Réglages, Hors ligne) */
+.screen{left:0;right:0;top:0;bottom:92px;background:var(--bg);padding:54px 12px 20px;overflow:auto;touch-action:pan-y;z-index:1200;display:flex;flex-direction:column;gap:18px}
+.screen h1{margin:0;font:700 34px 'Barlow Condensed';letter-spacing:.5px}
+.sec{display:flex;flex-direction:column;gap:8px}
+.box{padding:12px;border-radius:14px;background:var(--card);border:1px solid var(--stroke);display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:center;gap:12px;min-height:44px}
+.name{flex:1;display:flex;flex-direction:column;min-width:0}.name b{font-weight:500;font-size:15px}.name small{font:10.5px 'IBM Plex Mono';color:var(--muted)}
+.seg{display:grid;gap:4px;padding:4px;border-radius:10px;background:var(--ctl)}
+.seg button{height:34px;border:0;border-radius:8px;background:transparent;color:var(--sec);font:11.5px 'IBM Plex Mono';cursor:pointer}
+.seg button.on{background:var(--accent);color:var(--bg)}
+.tg{position:relative;width:52px;height:32px;flex:none;border:0;border-radius:16px;background:var(--stroke);cursor:pointer}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:13px;background:var(--muted);transition:left .15s}
+.tg.on{background:var(--accent)}.tg.on::after{left:23px;background:var(--bg)}
+.layer{padding:10px 12px;border-radius:12px;background:rgba(42,47,34,.5);border:1px solid var(--stroke);display:flex;flex-direction:column;gap:6px}
+.sw{width:28px;height:28px;flex:none;border-radius:6px;border:1px solid #4A4F3C}
+input[type=range]{flex:1;accent-color:var(--accent)}
+.pct{width:40px;text-align:right;font:12px 'IBM Plex Mono';color:var(--accent)}
+.small{height:34px;padding:0 12px;border:0;border-radius:9px;background:var(--ctl);color:var(--accent);font:700 13px 'Barlow Condensed';letter-spacing:.8px;cursor:pointer}
+.primary{height:46px;width:100%;border:0;border-radius:12px;background:var(--accent);color:var(--bg);font:700 16px 'Barlow Condensed';letter-spacing:1px;cursor:pointer}
+
+/* Export */
+.frame{left:90px;top:130px;width:210px;border:2px solid var(--accent);box-shadow:0 0 0 2000px rgba(12,14,10,.55);pointer-events:none}
+.frame i{position:absolute;width:14px;height:14px;background:var(--accent);border-radius:3px}
+.frame .flabel{position:absolute;left:50%;top:-28px;transform:translateX(-50%);padding:3px 8px;border-radius:6px;background:var(--bg);color:var(--accent);font:11px 'IBM Plex Mono';white-space:nowrap}
+.xtitle{left:12px;top:54px;font:700 22px 'Barlow Condensed';letter-spacing:1px;color:var(--text);pointer-events:none}
+.sheet{left:0;right:0;bottom:92px;padding:8px 16px 12px;background:var(--bg);border-top:1px solid var(--stroke);border-radius:22px 22px 0 0;display:flex;flex-direction:column;gap:10px;z-index:1100;touch-action:pan-y}
+.handle{align-self:center;width:40px;height:5px;border-radius:3px;background:#4A4F3C;flex:none}
+.chips{display:flex;align-items:center;gap:6px}
+.chips .t{width:58px;flex:none;font:600 12px 'Barlow Condensed';letter-spacing:.6px;color:var(--muted)}
+.chip{flex:1;height:32px;border:1px solid var(--stroke);border-radius:8px;background:var(--card);color:var(--sec);font:12px 'IBM Plex Mono';cursor:pointer}
+.chip.on{border-color:var(--accent);background:var(--deep);color:var(--accent)}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.check{height:34px;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid #4A4F3C;border-radius:8px;background:var(--card);font:12.5px Barlow;text-align:left;cursor:pointer}
+.check span{width:14px;height:14px;flex:none;border:2px solid #4A4F3C;border-radius:3px}
+.check.on{border-color:var(--accent)}.check.on span{border-color:var(--accent);background:var(--accent)}
+.dev{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:1px solid var(--stroke);border-radius:10px;background:var(--card);text-align:left;cursor:pointer}
+.dev .r{width:16px;height:16px;flex:none;border:2px solid var(--stroke);border-radius:8px}
+.dev.on{border-color:var(--accent)}.dev.on .r{border-color:var(--accent);background:var(--accent)}
+
+/* Fiche marqueur / liste */
+.msheet{left:0;right:0;bottom:0;padding:8px 16px 30px;background:var(--bg);border-top:1px solid var(--stroke);border-radius:22px 22px 0 0;z-index:1400;display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 30px rgba(0,0,0,.4);max-height:80%;overflow:auto;touch-action:pan-y}
+.msheet h2{margin:0;font:700 26px 'Barlow Condensed'}
+.field{height:44px;padding:0 12px;border:1px solid var(--stroke);border-radius:10px;background:var(--card);color:var(--text);font:16px Barlow;outline:0;width:100%}
+.field:focus{border-color:var(--accent)}
+.kinds{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.kinds button{flex:none;height:34px;padding:0 10px;border:1px solid var(--stroke);border-radius:8px;background:var(--card);color:var(--sec);font:500 13px Barlow;cursor:pointer}
+.kinds button.on{border-color:var(--accent);background:var(--deep);color:var(--accent)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tiles button{height:48px;border:1px solid var(--stroke);border-radius:12px;background:var(--card);font:700 13px 'Barlow Condensed';letter-spacing:.8px;cursor:pointer}
+.item{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:6px 4px;border:0;border-bottom:1px solid var(--ctl);background:none;text-align:left;cursor:pointer}
+.toast{left:50%;bottom:110px;transform:translateX(-50%);max-width:340px;padding:10px 14px;border-radius:12px;font:13px Barlow;z-index:1500;text-align:center}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="nightRed" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.36 0.62 0.14 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter></svg>
+<div class="phone" id="phone">
+  <div id="map"></div>
+
+  <!-- ===== CARTE ===== -->
+  <div class="ui top" data-on="map">
+    <div class="bar panel" id="searchBar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C9C7B2" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      <label for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Rechercher</label>
+      <input id="q" type="search" placeholder="Lieu, adresse ou coordonnées" autocomplete="off">
+      <button class="chipbtn" id="gridbtn" aria-label="Saisir des coordonnées">GRID</button>
+    </div>
+    <div class="row" id="markBar" hidden style="gap:8px;min-height:0">
+      <button class="iconbtn panel" id="markClose" aria-label="Quitter le mode marquer" style="width:48px;height:48px">✕</button>
+      <div class="bar panel" style="flex:1;padding-right:7px">
+        <div class="name"><span class="cond" style="font-size:15px;letter-spacing:1px">MARQUER</span><small>Touchez la carte pour poser un point</small></div>
+        <button class="chipbtn" id="markListBtn">LISTE · 0</button>
+      </div>
+    </div>
+    <div class="coords panel" id="coords" title="Changer de format"><span><span class="k" id="fmt">MGRS </span><span id="cval">—</span></span><span class="alt" id="alt">— m</span></div>
+    <div class="results panel" id="results" hidden></div>
+  </div>
+
+  <div class="ui tools" data-on="map">
+    <button class="iconbtn panel" id="btnPin" aria-label="Marquer un point" aria-pressed="false" style="width:48px;height:48px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.6-6-10.5a6 6 0 0 1 12 0C18 15.4 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.2"/></svg></button>
+    <button class="iconbtn panel" id="btnFrance" aria-label="Vue France entière" style="width:48px;height:48px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ECE8D8" stroke-width="1.8" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </div>
+
+  <svg class="ui cross" data-on="map" viewBox="0 0 56 56" fill="none" stroke-linecap="round" aria-hidden="true"><circle cx="28" cy="28" r="14" stroke="#1F1D1A" stroke-width="4" opacity=".35"/><circle cx="28" cy="28" r="14" stroke="#E4A72B" stroke-width="2"/><path d="M28 2v14M28 40v14M2 28h14M40 28h14" stroke="#1F1D1A" stroke-width="4" opacity=".35"/><path d="M28 2v14M28 40v14M2 28h14M40 28h14" stroke="#E4A72B" stroke-width="2"/><circle cx="28" cy="28" r="1.8" fill="#E4A72B"/></svg>
+
+  <div class="ui scale panel" data-on="map"><div class="b"><i id="b1" style="background:#ECE8D8"></i><i id="b2" style="background:#181B14;border:1px solid #ECE8D8"></i></div><div style="display:flex;justify-content:space-between" id="sl"></div><div class="lbl" id="slbl"></div></div>
+  <button class="ui loc" id="loc" data-on="map" aria-label="Ma position"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#181B14" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+  <button class="ui place" id="placeHere" hidden>📍 POSER AU RÉTICULE</button>
+  <div class="ui attr" data-on="map">© IGN · Plan IGN v2 · LiDAR HD · PCI</div>
+
+  <!-- ===== EXPORT ===== -->
+  <div class="ui xtitle" data-on="export">IMPRIMER &amp; EXPORTER</div>
+  <div class="ui frame" id="frame" data-on="export"><i style="left:-8px;top:-8px"></i><i style="right:-8px;top:-8px"></i><i style="left:-8px;bottom:-8px"></i><i style="right:-8px;bottom:-8px"></i><span class="flabel" id="flabel"></span></div>
+  <div class="ui sheet" data-on="export">
+    <div class="handle"></div>
+    <div class="seg" style="grid-template-columns:1fr 1fr" id="destSeg"><button class="on cond" data-d="paper" style="font:700 14px 'Barlow Condensed';letter-spacing:.8px">PAPIER</button><button data-d="dev" style="font:700 14px 'Barlow Condensed';letter-spacing:.8px">APPAREILS</button></div>
+    <div id="paperPane" style="display:flex;flex-direction:column;gap:8px">
+      <div class="chips" id="fmtChips"><span class="t">FORMAT</span></div>
+      <div class="chips" id="scaleChips"><span class="t">ÉCHELLE</span></div>
+      <div class="checks" id="checks"></div>
+      <button class="primary" id="genPdf">GÉNÉRER LE PDF D’IMPRESSION</button>
+    </div>
+    <div id="devPane" hidden style="display:flex;flex-direction:column;gap:6px"></div>
+  </div>
+
+  <!-- ===== RÉGLAGES ===== -->
+  <div class="ui screen" data-on="settings">
+    <div><div class="lab">PARAMÈTRES</div><h1>Réglages</h1></div>
+    <div class="sec"><div class="lab">REPÈRES</div><div class="box">
+      <div class="row"><div class="name"><b>Repères sauvegardés</b><small id="mkCount3">0 repère(s)</small></div><button class="small" id="openMarkers">OUVRIR</button></div>
+    </div></div>
+    <div class="sec"><div class="lab">AFFICHAGE</div><div class="box">
+      <div class="row"><div class="name"><b>Mode nuit</b><small>noir et rouge · préserve la vision nocturne</small></div><button class="tg" id="tgNight" aria-label="Mode nuit"></button></div>
+    </div></div>
+    <div class="sec"><div class="lab">SAUVEGARDE</div><div class="box">
+      <div class="row"><div class="name"><b>Enregistrer repères et réglages</b><small>fichier .json · à ranger dans iCloud Drive, OneDrive…</small></div><button class="small" id="bkExport">EXPORTER</button></div>
+      <div class="row"><div class="name"><b>Restaurer une sauvegarde</b><small>ajoute les repères, remplace les réglages</small></div><button class="small" id="bkImport">IMPORTER</button></div>
+      <input type="file" id="bkFile" accept="application/json,.json" hidden>
+      <small class="mono" style="color:var(--accent);font-size:10.5px" id="bkMsg"></small>
+    </div></div>
+    <div class="sec"><div class="lab">CARTE</div><div class="box">
+      <div class="row"><div class="name"><b>Afficher les marqueurs</b><small id="mkCount">0 point(s)</small></div><button class="tg on" id="tgMarkers" aria-label="Afficher les marqueurs"></button></div>
+    </div></div>
+    <div class="sec"><div class="lab">APPAREIL</div><div class="box">
+      <div class="row"><div class="name"><b>Écran toujours allumé</b><small>évite la mise en veille pendant la navigation</small></div><button class="tg" id="tgAwake" aria-label="Écran toujours allumé"></button></div>
+      <div class="row"><div class="name"><b>Localisation</b><small id="locState">demandée au premier appui sur « Ma position »</small></div><button class="small" id="locAsk">AUTORISER</button></div>
+    </div></div>
+    <div class="sec"><div class="lab">STOCKAGE</div><div class="box">
+      <div class="row"><div class="name"><b>Marqueurs enregistrés</b><small id="mkCount2">0 point(s)</small></div><button class="small" id="mkClear">SUPPRIMER</button></div>
+    </div></div>
+    <div class="sec"><div class="lab">SOURCES</div><div class="box"><span style="font-size:13px;color:var(--sec)">Cartes, relief LiDAR HD, cadastre (PCI), altimétrie (RGE ALTI) et adresses : © IGN, Géoplateforme, données ouvertes (Licence Ouverte Etalab 2.0).</span></div></div>
+  </div>
+
+  <!-- ===== CALQUES ===== -->
+  <div class="ui screen" data-on="layers">
+    <div><div class="lab">CARTE &amp; MESURES</div><h1>Calques</h1></div>
+    <div class="sec"><div class="lab">CALQUES · DU HAUT VERS LE BAS</div><div class="box" id="layerList"></div></div>
+    <div class="sec"><div class="lab">COORDONNÉES</div><div class="box"><div class="seg" id="setFmt" style="grid-template-columns:repeat(4,1fr)"></div><small class="mono" style="color:var(--muted);font-size:10.5px" id="fmtEx"></small></div></div>
+    <div class="sec"><div class="lab">AZIMUTS</div><div class="box"><div class="seg" id="setAng" style="grid-template-columns:repeat(3,1fr)"></div><small class="mono" style="color:var(--muted);font-size:10.5px">Millièmes OTAN : 6400 pour un tour complet.</small></div></div>
+    <div class="sec"><div class="lab">NORD DE RÉFÉRENCE</div><div class="box">
+      <div class="seg" id="setNorth" style="grid-template-columns:repeat(3,1fr)"></div>
+      <small class="mono" style="color:var(--muted);font-size:10.5px" id="northHelp"></small>
+      <div class="row" id="declRow" style="min-height:0"><label class="name" for="declIn"><b style="font-size:13px">Déclinaison magnétique (°, est +)</b><small>sur l’iPhone, mesurée par la boussole</small></label><input id="declIn" type="number" step="0.1" min="-30" max="30" class="field" style="width:84px;height:36px;text-align:right"></div>
+    </div></div>
+  </div>
+
+  <!-- ===== HORS LIGNE (aperçu) ===== -->
+  <div class="ui screen" data-on="offline">
+    <div><div class="lab">FRANCE MÉTROPOLITAINE</div><h1>Cartes hors ligne</h1></div>
+    <div class="sec"><div class="lab">CARTE DE FRANCE INTÉGRÉE</div><div class="box">
+      <div class="row"><div class="name"><b>Plan IGN · France entière</b><small>jusqu’au 1:500 000 environ · 23 Mo · utilisable sans réseau</small></div><button class="small" id="frBtn">INSTALLER</button></div>
+      <div style="height:6px;border-radius:3px;background:var(--stroke);overflow:hidden"><div id="frBar" style="width:0;height:6px;background:var(--accent)"></div></div>
+      <small class="mono" style="color:var(--muted);font-size:10.5px" id="frMsg">Pas encore installée.</small>
+    </div></div>
+    <div class="sec"><div class="lab">CARTES CONSULTÉES</div><div class="box">
+      <span style="font-size:13px;color:var(--sec)">Les cartes détaillées que vous regardez avec du réseau restent enregistrées (environ 3 000 morceaux de carte) et s’affichent ensuite hors ligne. Avant une sortie, parcourez le secteur avec du réseau.</span>
+    </div></div>
+  </div>
+
+  <!-- ===== Fiche marqueur ===== -->
+  <div class="ui msheet" id="mEditor" hidden>
+    <div class="handle"></div>
+    <div class="row" style="min-height:0;justify-content:space-between"><h2 id="mTitle">Nouveau marqueur</h2><small class="mono" style="color:var(--muted);font-size:10.5px" id="mSaved"></small></div>
+    <label class="lab" for="mLegend" style="font:600 12px 'Barlow Condensed';letter-spacing:.6px">LÉGENDE</label>
+    <input class="field" id="mLegend" placeholder="Ex. : point de rendez-vous, gué, poste d’observation" maxlength="120">
+    <div class="kinds" id="mKinds"></div>
+    <div class="mono" style="font-size:12px;color:var(--sec)" id="mCoord"></div>
+    <button class="primary" id="mSave" style="height:44px">ENREGISTRER LE MARQUEUR</button>
+    <div class="tiles" id="mEditTiles"><button id="mCancel">ANNULER</button><button id="mDelete" hidden>SUPPRIMER</button></div>
+  </div>
+
+  <div class="ui msheet" id="mList" hidden style="top:120px">
+    <div class="handle"></div>
+    <div class="row" style="min-height:0;justify-content:space-between"><h2>Marqueurs</h2><button class="small" id="mListClose">FERMER</button></div>
+    <input class="field" id="mFilter" placeholder="Filtrer par légende" style="height:40px">
+    <div id="mItems"></div>
+  </div>
+
+  <div class="ui toast panel" id="toast" hidden></div>
+
+  <nav class="ui" aria-label="Navigation principale">
+    <button data-tab="map" class="on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>CARTE</button>
+    <button data-tab="layers"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>CALQUES</button>
+    <button data-tab="export"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="1"/><path d="M7 14h10v7H7z"/></svg>EXPORT</button>
+    <button data-tab="offline"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>HORS LIGNE</button>
+    <button data-tab="settings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>RÉGLAGES</button>
+  </nav>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const store = { get(k, d){ try{ const v = localStorage.getItem('cartetopo.'+k); return v ? JSON.parse(v) : d; }catch(_){ return d; } },
+                set(k, v){ try{ localStorage.setItem('cartetopo.'+k, JSON.stringify(v)); }catch(_){} } };
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>t.hidden=true,3200); }
+
+// ---------- Carte : France entière, glisser + zoom 2 doigts
+const FRANCE = L.latLngBounds([41.0, -5.8], [51.6, 10.2]);
+const wmts = (layer, fmt) => `https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layer}&STYLE=normal&TILEMATRIXSET=PM&FORMAT=${fmt}&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`;
+const LAYERS = [
+  { k:'ortho', label:'Orthophoto', sub:'IGN · photographies aériennes', sw:'#5E6B45', on:false, op:1, url:wmts('ORTHOIMAGERY.ORTHOPHOTOS','image/jpeg'), max:19 },
+  { k:'lidar', label:'Relief LiDAR HD', sub:'IGN · modèle de surface, ombrage', sw:'#8E8A7E', on:true, op:.35, url:wmts('IGNF_LIDAR-HD_MNS_ELEVATION.ELEVATIONGRIDCOVERAGE.SHADOW','image/png'), max:18, cls:'lidar' },
+  { k:'cadastre', label:'Cadastre', sub:'IGN Parcellaire Express (PCI)', sw:'#FFFFFF', on:true, op:.7, url:wmts('CADASTRALPARCELS.PARCELLAIRE_EXPRESS','image/png'), max:19, minZ:13 },
+  { k:'plan', label:'Plan IGN v2', sub:'IGN · rues, bâti, hydrographie', sw:'#F2E6C9', on:true, op:1, url:wmts('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png'), max:19 },
+];
+const map = L.map('map', { zoomControl:false, attributionControl:false, maxBounds:FRANCE, maxBoundsViscosity:1, minZoom:5, maxZoom:19,
+  touchZoom:true, scrollWheelZoom:true, doubleClickZoom:true, bounceAtZoomLimits:false, zoomSnap:0, zoomDelta:.5, wheelPxPerZoomLevel:90, wheelDebounceTime:0
+}).setView([48.07734, 7.3582], 17);
+const tl = {};
+[...LAYERS].reverse().forEach((l, i) => {
+  tl[l.k] = L.tileLayer(l.url, { maxNativeZoom:l.max, maxZoom:19, minZoom:l.minZ||0, opacity:l.op, className:l.cls||'', zIndex:i+1, bounds:FRANCE.pad(.05) });
+  if (l.on) tl[l.k].addTo(map);
+});
+// Carte de France intégrée (Plan IGN z5–10) : toujours dessous, servie par le service worker
+// même sans réseau ; au-delà du zoom 10 elle est agrandie. Les calques IGN en ligne la recouvrent.
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+L.tileLayer('basemap/plan/{z}/{x}/{y}.jpg', { minZoom:5, maxZoom:19, maxNativeZoom:10, zIndex:0, bounds:FRANCE, errorTileUrl:BLANK }).addTo(map);
+(() => { // tap à 2 doigts = dézoom
+  const el = map.getContainer(); let t0=0, moved=false, two=false;
+  el.addEventListener('touchstart', e => { if (e.touches.length===2){ two=true; moved=false; t0=Date.now(); } }, {passive:true});
+  el.addEventListener('touchmove', () => { if (two) moved=true; }, {passive:true});
+  el.addEventListener('touchend', e => { if (two && e.touches.length===0){ if(!moved && Date.now()-t0<300) map.zoomOut(1); two=false; } }, {passive:true});
+})();
+document.addEventListener('wheel', e => { if (e.ctrlKey && !map.getContainer().contains(e.target)) e.preventDefault(); }, {passive:false});
+
+// ---------- Coordonnées (port de Geo/Coordinates.swift)
+const a=6378137, f=1/298.257223563, e2=f*(2-f), ep2=e2/(1-e2), k0=.9996, D=Math.PI/180;
+function toUTM(lat, lon){
+  const z=Math.floor((lon+180)/6)+1, l0=(z*6-183)*D, p=lat*D, e4=e2*e2, e6=e4*e2;
+  const N=a/Math.sqrt(1-e2*Math.sin(p)**2), T=Math.tan(p)**2, C=ep2*Math.cos(p)**2, A=Math.cos(p)*(lon*D-l0);
+  const M=a*((1-e2/4-3*e4/64-5*e6/256)*p-(3*e2/8+3*e4/32+45*e6/1024)*Math.sin(2*p)+(15*e4/256+45*e6/1024)*Math.sin(4*p)-(35*e6/3072)*Math.sin(6*p));
+  const E=k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*ep2)*A**5/120)+5e5;
+  const Nn=k0*(M+N*Math.tan(p)*(A*A/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*ep2)*A**6/720));
+  return {z, band:"CDEFGHJKLMNPQRSTUVWX"[Math.min(19,Math.floor((lat+80)/8))], E, N:Nn};
+}
+function mgrs(lat, lon){
+  const u=toUTM(lat,lon), sets=["ABCDEFGH","JKLMNPQR","STUVWXYZ"], rows=u.z%2?"ABCDEFGHJKLMNPQRSTUV":"FGHJKLMNPQRSTUVABCDE";
+  const pad=v=>String(Math.floor(v%1e5)).padStart(5,'0');
+  return `${u.z}${u.band} ${sets[(u.z-1)%3][(Math.floor(u.E/1e5)-1+8)%8]}${rows[Math.floor(u.N/1e5)%20]} ${pad(u.E)} ${pad(u.N)}`;
+}
+function lambert93(lat, lon){
+  const e=Math.sqrt(e2), m=p=>Math.cos(p)/Math.sqrt(1-e2*Math.sin(p)**2), t=p=>Math.tan(Math.PI/4-p/2)/((1-e*Math.sin(p))/(1+e*Math.sin(p)))**(e/2);
+  const p1=44*D,p2=49*D,p0=46.5*D,n=(Math.log(m(p1))-Math.log(m(p2)))/(Math.log(t(p1))-Math.log(t(p2))), F=m(p1)/(n*t(p1)**n);
+  const r0=a*F*t(p0)**n, r=a*F*t(lat*D)**n, th=n*(lon*D-3*D), g=v=>Math.round(v).toLocaleString('fr-FR');
+  return `X ${g(7e5+r*Math.sin(th))} · Y ${g(6.6e6+r0-r*Math.cos(th))}`;
+}
+const FORMATS=[['MGRS','MGRS',mgrs],['UTM','UTM',(la,lo)=>{const u=toUTM(la,lo);return `${u.z}${u.band} ${Math.round(u.E)} E ${Math.round(u.N)} N`}],
+  ['WGS84','WGS84',(la,lo)=>`${la.toFixed(5)}° N · ${lo.toFixed(5)}° E`],['Lambert 93','L93',lambert93]];
+const settings = Object.assign({ fmt:0, ang:2, markers:true, awake:false, night:false, north:0, decl:2.0 }, store.get('settings', {}));
+const NORTHS=[['Vrai','V'],['Grille','G'],['Magnétique','M']];
+// azimut vrai → nord choisi (grille : convergence des méridiens ; magnétique : déclinaison)
+function bearingText(trueDeg, lat, lon){
+  let d=trueDeg;
+  if(settings.north===1){ const z=Math.floor((lon+180)/6)+1; d -= (lon-(z*6-183))*Math.sin(lat*Math.PI/180); }
+  if(settings.north===2) d -= settings.decl;
+  d=((d%360)+360)%360; const mil=Math.round(d*6400/360)%6400;
+  const txt=[`${Math.round(d)}°`,`${mil} mil`,`${Math.round(d)}° · ${mil} mil`][settings.ang];
+  return txt+' '+NORTHS[settings.north][1];
+}
+function bearingDeg(a1,o1,a2,o2){ const r=Math.PI/180, y=Math.sin((o2-o1)*r)*Math.cos(a2*r), x=Math.cos(a1*r)*Math.sin(a2*r)-Math.sin(a1*r)*Math.cos(a2*r)*Math.cos((o2-o1)*r); return (Math.atan2(y,x)/r+360)%360; }
+const saveSettings = () => store.set('settings', settings);
+const fmtCoord = (la, lo) => FORMATS[settings.fmt][2](la, lo);
+
+// ---------- Barre de coordonnées, altitude, échelle
+let altTimer;
+function update(){
+  const c=map.getCenter();
+  $('fmt').textContent=FORMATS[settings.fmt][1]+' '; $('cval').textContent=fmtCoord(c.lat,c.lng);
+  clearTimeout(altTimer);
+  altTimer=setTimeout(async()=>{ try{ const r=await fetch(`https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json?lon=${c.lng}&lat=${c.lat}&resource=ign_rge_alti_wld&zonly=true`);
+    const z=(await r.json()).elevations[0]; $('alt').textContent=z>-500?Math.round(z)+' m':'— m'; }catch(_){} },450);
+  const mpp=40075016.7*Math.cos(c.lat*D)/(256*2**map.getZoom()), target=125*mpp, mag=10**Math.floor(Math.log10(target));
+  const nice=[1,2,5,10].map(x=>x*mag).filter(x=>x<=target).pop()||mag, w=nice/mpp, fd=m=>m<1000?Math.round(m)+' m':(m/1000).toLocaleString('fr-FR')+' km';
+  $('b1').style.width=$('b2').style.width=(w/2)+'px'; $('sl').style.width=w+'px'; $('sl').innerHTML=`<span>0</span><span>${fd(nice)}</span>`;
+  const den=mpp/0.000156; $('slbl').textContent='1:'+[1250,2500,5000,10000,25000,50000,100000,250000,500000,1000000,2000000,4000000].reduce((p,q)=>Math.abs(q-den)<Math.abs(p-den)?q:p).toLocaleString('fr-FR');
+  $('fmtEx').textContent='Exemple : '+fmtCoord(c.lat,c.lng);
+}
+map.on('move', update);
+$('coords').onclick=()=>{ settings.fmt=(settings.fmt+1)%FORMATS.length; saveSettings(); renderSettings(); update(); refreshMarkers(); };
+
+// ---------- Recherche
+const q=$('q'), res=$('results'); let st;
+q.addEventListener('input',()=>{ clearTimeout(st); const v=q.value.trim(); if(v.length<3){res.hidden=true;return;}
+  st=setTimeout(async()=>{ try{ const j=await (await fetch('https://data.geopf.fr/geocodage/search?limit=6&q='+encodeURIComponent(v))).json();
+    res.innerHTML=''; j.features.forEach(ft=>{ const b=document.createElement('button'); b.innerHTML=`${ft.properties.label}<small>${ft.properties.context||''}</small>`;
+      b.onclick=()=>{ map.setView([ft.geometry.coordinates[1],ft.geometry.coordinates[0]],16); res.hidden=true; q.blur(); }; res.appendChild(b); });
+    res.hidden=!j.features.length; }catch(_){} },300); });
+$('gridbtn').onclick=()=>{ const v=prompt('Latitude, longitude (ex. 48.0773, 7.3582)'); if(!v)return; const p=v.split(/[,;]/).map(Number); if(p.length===2&&!isNaN(p[0])&&!isNaN(p[1])) map.setView(p,16); };
+$('btnFrance').onclick=()=>map.fitBounds(FRANCE.pad(-0.03));
+
+// ---------- Ma position : le navigateur (ou l'iPhone) demande l'autorisation au premier appui
+let me=null, locState='ask';
+function setLocState(s){ locState=s; $('locState').textContent = s==='ok'?'autorisée':s==='denied'?'refusée · à changer dans les réglages du navigateur':'demandée au premier appui sur « Ma position »'; $('locAsk').hidden = s==='ok'; $('locAsk').textContent = s==='denied'?'RÉESSAYER':'AUTORISER'; }
+function locate(){
+  if(!navigator.geolocation){ toast('Localisation non disponible sur cet appareil.'); return; }
+  toast('Demande d’accès à votre position…');
+  navigator.geolocation.getCurrentPosition(p=>{
+    setLocState('ok'); const ll=[p.coords.latitude,p.coords.longitude];
+    if(!FRANCE.contains(ll)){ toast('Votre position est hors de France métropolitaine.'); return; }
+    me = me || L.circleMarker(ll,{radius:8,color:'#fff',weight:3,fillColor:'#2F7DF6',fillOpacity:1}).addTo(map); me.setLatLng(ll);
+    map.setView(ll, Math.max(map.getZoom(),16)); $('toast').hidden=true;
+  }, err=>{ if(err.code===1){ setLocState('denied'); toast('Accès à la position refusé. Autorisez-le dans les réglages pour vous localiser.'); } else toast('Position indisponible pour le moment.'); },
+  { enableHighAccuracy:true, timeout:15000 });
+}
+$('loc').onclick=locate; $('locAsk').onclick=locate;
+if (navigator.permissions) navigator.permissions.query({name:'geolocation'}).then(p=>{ setLocState(p.state==='granted'?'ok':p.state==='denied'?'denied':'ask'); }).catch(()=>{});
+
+// ---------- Marqueurs (enregistrés dans le navigateur ; pas de limite fixe, 60+ sans souci)
+// types proposés à la pose d'un repère (les anciens « eau » / « pont » s'affichent comme « Point »)
+const KINDS=[['point','Point','•'],['rdv','Rendez-vous','R'],['obs','Observation','O'],['danger','Danger','!']];
+let markers = store.get('markers', []);
+const saveMarkers = () => store.set('markers', markers);
+const layerMk = L.layerGroup().addTo(map);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function refreshMarkers(){
+  layerMk.clearLayers();
+  if (settings.markers) markers.forEach(m=>{
+    const k=KINDS.find(x=>x[0]===m.kind)||KINDS[0];
+    const icon=L.divIcon({className:'', iconSize:null, iconAnchor:[11,11], html:`<div class="mk"><span class="sq">${k[2]}</span><span class="tx">${esc(m.legend)}</span></div>`});
+    L.marker([m.lat,m.lon],{icon, keyboard:true, title:m.legend}).on('click',ev=>{ L.DomEvent.stop(ev); openEditor(m); }).addTo(layerMk);
+  });
+  $('markListBtn').textContent='LISTE · '+markers.length;
+  $('mkCount').textContent=$('mkCount2').textContent=markers.length+' point(s)';
+  $('mkCount3').textContent=markers.length ? markers.length+' repère(s) · touchez OUVRIR pour la liste' : 'aucun repère · posez-en avec le pin de la carte';
+}
+let marking=false, draft=null, draftKind='point';
+function setMarking(on){ marking=on; $('markBar').hidden=!on; $('searchBar').hidden=on; $('placeHere').hidden=!on || tab!=='map'; renderNav(); if(on) toast('Touchez la carte pour poser un marqueur, ou utilisez « Poser au réticule ».'); }
+function openEditor(existing, latlng){
+  draft = existing ? {...existing} : { id:Date.now()+''+Math.random().toString(36).slice(2,6), lat:latlng.lat, lon:latlng.lng, legend:'', kind:'point' };
+  draftKind=KINDS.some(k=>k[0]===draft.kind)?draft.kind:'point'; $('mTitle').textContent=existing?'Marqueur':'Nouveau marqueur';
+  $('mSaved').textContent=markers.length+' enregistré(s)'; $('mLegend').value=draft.legend;
+  $('mCoord').textContent=FORMATS[settings.fmt][0]+' · '+fmtCoord(draft.lat,draft.lon);
+  $('mSave').textContent=existing?'ENREGISTRER':'ENREGISTRER LE MARQUEUR'; $('mDelete').hidden=!existing;
+  renderKinds(); $('mEditor').hidden=false; setTimeout(()=>$('mLegend').focus(),50);
+}
+function renderKinds(){ $('mKinds').innerHTML=''; KINDS.forEach(([k,l])=>{ const b=document.createElement('button'); b.textContent=l; b.className=k===draftKind?'on':''; b.onclick=()=>{draftKind=k;renderKinds();}; $('mKinds').appendChild(b); }); }
+function saveDraft(){
+  const legend=$('mLegend').value.trim()||('Marqueur '+(markers.length+1));
+  const i=markers.findIndex(m=>m.id===draft.id); const m={...draft, legend, kind:draftKind};
+  if(i>=0) markers[i]=m; else markers.push(m);
+  saveMarkers(); refreshMarkers(); $('mEditor').hidden=true; toast(`« ${legend} » enregistré · ${markers.length} marqueur(s)`);
+}
+$('mSave').onclick=saveDraft; $('mLegend').addEventListener('keydown',e=>{ if(e.key==='Enter') saveDraft(); });
+$('mCancel').onclick=()=>$('mEditor').hidden=true;
+$('mDelete').onclick=()=>{ markers=markers.filter(m=>m.id!==draft.id); saveMarkers(); refreshMarkers(); $('mEditor').hidden=true; };
+map.on('click', e=>{ if(marking && tab==='map') openEditor(null, e.latlng); });
+$('placeHere').onclick=()=>openEditor(null, map.getCenter());
+$('markClose').onclick=()=>setMarking(false);
+function renderList(){
+  const f=$('mFilter').value.trim().toLowerCase(); $('mItems').innerHTML='';
+  const items=[...markers].reverse().filter(m=>!f||m.legend.toLowerCase().includes(f));
+  if(!items.length) $('mItems').innerHTML='<p style="color:var(--muted)">Aucun marqueur.</p>';
+  items.forEach(m=>{ const b=document.createElement('button'); b.className='item';
+    const from = me ? me.getLatLng() : map.getCenter(), dist = map.distance(from,[m.lat,m.lon]);
+    const dTxt = (dist<1000?Math.round(dist)+' m':(dist/1000).toFixed(1).replace('.',',')+' km')+' · '+bearingText(bearingDeg(from.lat,from.lng,m.lat,m.lon),from.lat,from.lng);
+    b.innerHTML=`<span class="mk"><span class="sq">${(KINDS.find(x=>x[0]===m.kind)||KINDS[0])[2]}</span></span><span class="name"><b style="font-weight:600">${esc(m.legend)}</b><small>${fmtCoord(m.lat,m.lon)}</small><small style="color:var(--sec)">${dTxt} ${me?'depuis vous':'depuis le réticule'}</small></span>`;
+    // toucher un repère : retour sur la carte, centrée sur le repère
+    b.onclick=()=>{ $('mList').hidden=true; if(tab!=='map') showTab('map'); map.setView([m.lat,m.lon],Math.max(map.getZoom(),17)); toast('Repère : '+m.legend); };
+    $('mItems').appendChild(b); });
+}
+$('markListBtn').onclick=()=>{ renderList(); $('mList').hidden=false; };
+$('openMarkers').onclick=()=>{ $('mFilter').value=''; renderList(); $('mList').hidden=false; };
+$('mListClose').onclick=()=>$('mList').hidden=true; $('mFilter').oninput=renderList;
+
+// ---------- Réglages
+function seg(el, labels, cur, onPick){ el.innerHTML=''; labels.forEach((l,i)=>{ const b=document.createElement('button'); b.textContent=l; if(i===cur)b.className='on'; b.onclick=()=>onPick(i); el.appendChild(b); }); }
+let wakeLock=null;
+async function applyAwake(){ try{ if(settings.awake && 'wakeLock' in navigator){ wakeLock=await navigator.wakeLock.request('screen'); } else if(wakeLock){ await wakeLock.release(); wakeLock=null; } }catch(_){} }
+function renderSettings(){
+  seg($('setFmt'), FORMATS.map(x=>x[0]), settings.fmt, i=>{ settings.fmt=i; saveSettings(); renderSettings(); update(); });
+  seg($('setAng'), ['Degrés','Millièmes','Les deux'], settings.ang, i=>{ settings.ang=i; saveSettings(); renderSettings(); });
+  $('tgMarkers').classList.toggle('on', settings.markers); $('tgAwake').classList.toggle('on', settings.awake);
+  $('tgNight').classList.toggle('on', settings.night); $('phone').classList.toggle('night', settings.night);
+  seg($('setNorth'), NORTHS.map(n=>n[0]), settings.north, i=>{ settings.north=i; saveSettings(); renderSettings(); });
+  $('northHelp').textContent=[ 'Azimuts par rapport au nord géographique (lettre V).',
+    'Azimuts par rapport au quadrillage UTM/MGRS de la carte (lettre G).',
+    `Azimuts boussole (lettre M), déclinaison ${settings.decl>=0?'+':''}${settings.decl.toFixed(1)}°.`][settings.north];
+  $('declRow').hidden = settings.north!==2; $('declIn').value=settings.decl;
+}
+$('tgNight').onclick=()=>{ settings.night=!settings.night; saveSettings(); renderSettings(); };
+$('declIn').onchange=()=>{ const v=parseFloat($('declIn').value); if(!isNaN(v)&&Math.abs(v)<=30){ settings.decl=v; saveSettings(); renderSettings(); } };
+// Sauvegarde : même contenu que sur l'iPhone (repères + réglages)
+$('bkExport').onclick=()=>{
+  const data={ app:'CarteTopo', version:2, date:new Date().toISOString(), settings, markers };
+  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  const el=document.createElement('a'); el.href=url; el.download=`CarteTopo-sauvegarde-${new Date().toISOString().slice(0,10)}.json`; el.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $('bkMsg').textContent=`Sauvegarde téléchargée · ${markers.length} repère(s)`;
+};
+$('bkImport').onclick=()=>$('bkFile').click();
+$('bkFile').onchange=async()=>{
+  const f=$('bkFile').files[0]; if(!f) return;
+  try{ const d=JSON.parse(await f.text()); if(!Array.isArray(d.markers)) throw 0;
+    const known=new Set(markers.map(m=>m.id)); const add=d.markers.filter(m=>m && m.id && !known.has(m.id) && isFinite(m.lat) && isFinite(m.lon));
+    markers=markers.concat(add.map(m=>({id:String(m.id),lat:+m.lat,lon:+m.lon,legend:String(m.legend||'Repère'),kind:String(m.kind||'point')})));
+    if(d.settings && typeof d.settings==='object'){ Object.assign(settings, d.settings);
+      settings.decl=+settings.decl||0; settings.north=[0,1,2].includes(settings.north)?settings.north:0; settings.ang=[0,1,2].includes(settings.ang)?settings.ang:2; settings.fmt=[0,1,2,3].includes(settings.fmt)?settings.fmt:0; }
+    saveMarkers(); saveSettings(); renderSettings(); refreshMarkers(); update();
+    $('bkMsg').textContent=`Sauvegarde restaurée · ${add.length} repère(s) ajouté(s)`;
+  }catch(_){ $('bkMsg').textContent='Fichier non reconnu : ce n’est pas une sauvegarde Carte Topo.'; }
+  $('bkFile').value='';
+};
+$('tgMarkers').onclick=()=>{ settings.markers=!settings.markers; saveSettings(); renderSettings(); refreshMarkers(); };
+$('tgAwake').onclick=()=>{ settings.awake=!settings.awake; saveSettings(); renderSettings(); applyAwake(); };
+$('mkClear').onclick=()=>{ if(markers.length && confirm(`Supprimer les ${markers.length} marqueur(s) ? Cette action est définitive.`)){ markers=[]; saveMarkers(); refreshMarkers(); } };
+LAYERS.forEach(l=>{
+  const d=document.createElement('div'); d.className='layer';
+  d.innerHTML=`<div class="row" style="min-height:0"><span class="sw" style="background:${l.sw}"></span><span class="name"><b style="font-weight:600">${l.label}</b><small>${l.sub}</small></span><button class="tg ${l.on?'on':''}" aria-label="Afficher ${l.label}"></button></div>
+  <div class="row" style="min-height:0"><span class="lab" style="font:600 12px 'Barlow Condensed';letter-spacing:.6px">OPACITÉ</span><input type="range" min="0" max="100" step="5" value="${l.op*100}" aria-label="Opacité ${l.label}"><span class="pct"></span></div>`;
+  const tg=d.querySelector('.tg'), rg=d.querySelector('input'), pct=d.querySelector('.pct');
+  const sync=()=>{ tg.classList.toggle('on',l.on); pct.textContent=l.on?Math.round(l.op*100)+' %':'off'; pct.style.color=l.on?'':'var(--dim)';
+    if(l.on&&!map.hasLayer(tl[l.k]))tl[l.k].addTo(map); if(!l.on&&map.hasLayer(tl[l.k]))map.removeLayer(tl[l.k]); tl[l.k].setOpacity(l.op); };
+  tg.onclick=()=>{ l.on=!l.on; sync(); }; rg.oninput=()=>{ l.op=rg.value/100; l.on=true; sync(); }; sync();
+  $('layerList').appendChild(d);
+});
+
+// ---------- Export (cadrage à l'échelle exacte)
+const PAPER={A4:[210,297],A3:[297,420],A2:[420,594],A1:[594,841]}, SCALES=[1250,5000,25000];
+const ex=Object.assign({dest:'paper',fmt:'A4',scale:1250,opts:{hd:false,grid:true,leg:true,mk:false},dev:'atak'}, {});
+const mapSize=f=>[PAPER[f][0]-20, PAPER[f][1]-38];
+function frameRect(){ const [w,h]=mapSize(ex.fmt); return {x:90,y:130,w:210,h:210*h/w}; }
+function applyExport(){
+  const r=frameRect(); Object.assign($('frame').style,{height:r.h+'px'});
+  $('flabel').textContent=`${ex.fmt} portrait · 1:${ex.scale.toLocaleString('fr-FR')}`;
+  const ground=mapSize(ex.fmt)[0]/1000*ex.scale, mpp=ground/r.w, fc=[r.x+r.w/2, r.y+r.h/2];
+  const at=map.containerPointToLatLng(fc), z=Math.log2(40075016.7*Math.cos(at.lat*D)/(256*mpp));
+  map.setZoom(Math.min(19,Math.max(5,z)),{animate:false}); const p=map.latLngToContainerPoint(at); map.panBy([p.x-fc[0],p.y-fc[1]],{animate:false});
+}
+function renderExport(){
+  const chips=(el,list,cur,lab,pick)=>{ el.querySelectorAll('.chip').forEach(c=>c.remove()); list.forEach(v=>{ const b=document.createElement('button'); b.className='chip'+(v===cur?' on':''); b.textContent=lab(v); b.onclick=()=>pick(v); el.appendChild(b); }); };
+  chips($('fmtChips'),Object.keys(PAPER),ex.fmt,v=>v,v=>{ex.fmt=v;renderExport();applyExport();});
+  chips($('scaleChips'),SCALES,ex.scale,v=>'1:'+v.toLocaleString('fr-FR'),v=>{ex.scale=v;renderExport();applyExport();});
+  $('checks').innerHTML=''; [['hd','Haute définition 300 dpi'],['grid','Grille MGRS en marge'],['leg','Légende + convergence'],['mk','Marqueurs']].forEach(([k,l])=>{
+    const b=document.createElement('button'); b.className='check'+(ex.opts[k]?' on':''); b.innerHTML=`<span></span>${l}`; b.onclick=()=>{ex.opts[k]=!ex.opts[k];renderExport();}; $('checks').appendChild(b); });
+  $('devPane').innerHTML=''; [['atak','ATAK / iTAK','KMZ · carte géoréférencée + points'],['garmin','GPS Garmin','Custom Maps (.kmz) + waypoints (.gpx)'],['gpx','GPX','marqueurs seuls · disponible dans l’aperçu'],['mbtiles','MBTiles','tuiles hors ligne, couches visibles']].forEach(([k,t,s])=>{
+    const b=document.createElement('button'); b.className='dev'+(ex.dev===k?' on':''); b.innerHTML=`<span class="r"></span><span class="name"><b style="font-weight:600;font-size:14px">${t}</b><small>${s}</small></span>`; b.onclick=()=>{ex.dev=k;renderExport();}; $('devPane').appendChild(b); });
+  const go=document.createElement('button'); go.className='primary'; go.style.height='44px'; go.textContent='EXPORTER LA ZONE'; go.onclick=exportDevice; $('devPane').appendChild(go);
+  $('paperPane').hidden=ex.dest!=='paper'; $('devPane').hidden=ex.dest!=='dev';
+  $('destSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.d===ex.dest));
+}
+$('destSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ex.dest=b.dataset.d;renderExport();});
+$('genPdf').onclick=()=>toast('Le PDF d’impression est généré par l’app iPhone. L’aperçu web montre le cadrage à l’échelle exacte.');
+function exportDevice(){
+  if(ex.dev!=='gpx'){ toast('Cet export est produit par l’app iPhone. Dans l’aperçu, seul le GPX des marqueurs est disponible.'); return; }
+  if(!markers.length){ toast('Aucun marqueur à exporter.'); return; }
+  const gpx='<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Carte Topo" xmlns="http://www.topografix.com/GPX/1/1">\n'
+    + markers.map(m=>`  <wpt lat="${m.lat.toFixed(7)}" lon="${m.lon.toFixed(7)}"><name>${esc(m.legend)}</name><desc>${mgrs(m.lat,m.lon)}</desc></wpt>`).join('\n') + '\n</gpx>\n';
+  const url=URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'})); const aEl=document.createElement('a'); aEl.href=url; aEl.download='marqueurs.gpx'; aEl.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+// ---------- Navigation (barre du bas)
+let tab='map';
+function renderNav(){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===tab));
+  $('btnPin').classList.toggle('on', marking); $('btnPin').setAttribute('aria-pressed', marking);
+  $('btnPin').setAttribute('aria-label', marking ? 'Quitter le mode marquer' : 'Marquer un point');
+}
+$('btnPin').onclick=()=>setMarking(!marking);
+function showTab(t){
+  tab=t; document.querySelectorAll('[data-on]').forEach(el=>el.hidden = el.dataset.on!==t);
+  $('placeHere').hidden = !(marking && t==='map'); $('mEditor').hidden=true; $('mList').hidden=true; $('results').hidden=true;
+  if(t==='export'){ renderExport(); applyExport(); }
+  renderNav(); update();
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  const t=b.dataset.tab;
+  if(marking && t!=='map') setMarking(false);
+  showTab(t);
+});
+
+renderSettings(); refreshMarkers(); showTab('map'); setLocState(locState);
+
+// Mode hors ligne de l'app (interface + cartes déjà consultées) — nécessite un hébergement HTTPS
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+// ---------- Carte de France intégrée : 2 paquets téléchargés une fois, découpés en tuiles dans le cache
+const FR_CACHE = 'cartetopo-basemap';
+async function franceInstalled(){
+  try{ const c = await caches.open(FR_CACHE); return !!(await c.match('basemap/plan/10/541/383.jpg')); }catch(_){ return false; }
+}
+async function installFrance(){
+  if (!('caches' in window)) { $('frMsg').textContent='Ce navigateur ne permet pas le stockage hors ligne.'; return; }
+  if (!navigator.onLine) { $('frMsg').textContent='Connexion nécessaire pour l’installer (une seule fois).'; return; }
+  $('frBtn').disabled = true; $('frMsg').textContent = 'Téléchargement…';
+  try{
+    const index = await (await fetch('basemap/france.json', {cache:'no-cache'})).json();
+    const cache = await caches.open(FR_CACHE);
+    const total = index.packs.reduce((s,p)=>s+Object.keys(p.tiles).length, 0); let done = 0;
+    for (const p of index.packs){
+      const buf = await (await fetch('basemap/' + p.file)).arrayBuffer();
+      for (const [key, [off, len]] of Object.entries(p.tiles)){
+        await cache.put('basemap/plan/' + key + '.jpg',
+          new Response(buf.slice(off, off + len), { headers: { 'Content-Type': 'image/jpeg' } }));
+        if (++done % 50 === 0 || done === total){
+          $('frBar').style.width = Math.round(done/total*100) + '%';
+          $('frMsg').textContent = `Installation… ${done} / ${total} tuiles`;
+        }
+      }
+    }
+    store.set('franceOK', true);
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+    showFranceState(true);
+    // rafraîchit la couche de base
+    map.eachLayer(l => { if (l._url && l._url.startsWith('basemap/')) l.redraw(); });
+  }catch(e){
+    $('frMsg').textContent = 'Échec du téléchargement, réessayez avec une meilleure connexion.';
+  }
+  $('frBtn').disabled = false;
+}
+function showFranceState(ok){
+  $('frBar').style.width = ok ? '100%' : '0';
+  $('frMsg').textContent = ok ? '✓ Installée : la France entière s’affiche sans réseau.' : 'Pas encore installée.';
+  $('frBtn').textContent = ok ? 'RÉINSTALLER' : 'INSTALLER';
+}
+$('frBtn').onclick = installFrance;
+franceInstalled().then(ok => {
+  showFranceState(ok);
+  // installée d'office au premier lancement de l'app depuis l'écran d'accueil
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (!ok && standalone && navigator.onLine) installFrance();
+});
+</script>
+</body>
+</html>
